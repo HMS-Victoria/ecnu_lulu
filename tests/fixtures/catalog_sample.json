@@ -1,0 +1,112 @@
+{
+  "_note": "结构仿真、内容虚构的接口样本 fixture：用于离线回归测试解析逻辑。字段名沿用平台常见命名（camelCase）。",
+  "course_list": {
+    "code": 200,
+    "msg": "success",
+    "data": {
+      "total": 3,
+      "rows": [
+        {
+          "courseId": "C-1001",
+          "courseName": "数据结构与算法",
+          "teacherName": "张老师",
+          "term": "2025-2026-1",
+          "resources": [
+            {
+              "resourceId": "R-10011",
+              "title": "第1讲 绪论与复杂度分析",
+              "duration": 2712,
+              "recordTime": "2025-09-08 08:00:00",
+              "playUrl": "https://media.example.edu/hls/R-10011/index.m3u8?sign=abc&expires=1790000000",
+              "fileSize": 524288000,
+              "contentType": "application/vnd.apple.mpegurl"
+            },
+            {
+              "resourceId": "R-10012",
+              "title": "第2讲 线性表",
+              "durationSec": "01:02:05",
+              "startTime": 1757000000000,
+              "videoUrl": "https://media.example.edu/hls/R-10012/index.m3u8",
+              "size": "498000000",
+              "mimeType": "application/vnd.apple.mpegurl"
+            }
+          ]
+        },
+        {
+          "courseId": "C-1002",
+          "courseName": "编译原理",
+          "teacher": "李老师",
+          "resourceList": [
+            {
+              "id": "R-10021",
+              "name": "第1讲 词法分析",
+              "timeLength": "45:30",
+              "createTime": "2025-09-10T13:05:00",
+              "url": "/vod/R-10021/master.m3u8",
+              "sizeHint": 310000000,
+              "format": "hls"
+            }
+          ]
+        },
+        {
+          "courseId": "C-1003",
+          "course_name": "操作系统",
+          "teacher_name": "王老师",
+          "videoList": [
+            {
+              "videoId": "R-10031",
+              "videoName": "第1讲 进程与线程",
+              "videoDuration": 3005,
+              "publishTime": "2025-09-12 10:00:00",
+              "fileUrl": "https://media.example.edu/vod/R-10031/index.m3u8"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "resource_list": {
+    "code": "00000",
+    "data": {
+      "records": [
+        {
+          "courseResourceId": "R-20001",
+          "resourceName": "第3讲 栈与队列（回放）",
+          "duration": 2500,
+          "record_time": "2025-09-15 08:00:00",
+          "play_url": "https://media.example.edu/hls/R-20001/index.m3u8",
+          "mime": "application/vnd.apple.mpegurl",
+          "size": 402000000,
+          "chapterName": "第三章"
+        }
+      ],
+      "totalCount": 1
+    }
+  },
+  "play_info": {
+    "code": 0,
+    "message": "ok",
+    "data": {
+      "playUrl": "https://media.example.edu/hls/R-10011/index.m3u8?sign=xyz",
+      "duration": 2712,
+      "qualities": [
+        {"name": "标清", "url": "https://media.example.edu/hls/R-10011/360p.m3u8"},
+        {"name": "高清", "url": "https://media.example.edu/hls/R-10011/720p.m3u8"}
+      ]
+    }
+  },
+  "m3u8_plain": "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:10.000,\nseg-000.ts\n#EXTINF:10.000,\nseg-001.ts\n#EXT-X-ENDLIST\n",
+  "m3u8_aes128": "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin\",IV=0x00000000000000000000000000000000\n#EXTINF:10.000,\nseg-000.ts\n#EXT-X-ENDLIST\n",
+  "m3u8_drm": "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"skd://widevine\",KEYFORMAT=\"com.widevine.alpha\"\n#EXTINF:10.000,\nseg-000.ts\n#EXT-X-ENDLIST\n",
+  "asr_verbose_json": {
+    "task": "transcribe",
+    "language": "zh",
+    "duration": 12.5,
+    "text": "今天我们讲一下二叉树。二叉树的遍历有三种方式。",
+    "segments": [
+      {"id": 0, "start": 0.0, "end": 4.2, "text": "今天我们讲一下二叉树。", "confidence": 0.93},
+      {"id": 1, "start": 4.2, "end": 12.5, "text": "二叉树的遍历有三种方式。", "confidence": 0.91}
+    ]
+  },
+  "asr_srt": "1\n00:00:00,000 --> 00:00:04,200\n今天我们讲一下二叉树。\n\n2\n00:00:04,200 --> 00:00:12,500\n二叉树的遍历有三种方式。\n\n"
+}

@@ -1,0 +1,45 @@
+# ==== 敏感 / 侦察产物（绝不提交）====
+recon/
+storage_state.json
+*.storage_state.json
+data/cookies*.json
+credentials.json
+secrets.json
+.env
+.env.*
+
+# ==== Python ====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==== 运行产物 ====
+output/
+# 换 ASR 端点跑对照产物时用的备用输出目录（output-qwen 等）
+output-*/
+cache/
+data/catalog.json
+# 任务状态库（含你的课程名与任务记录，不进仓库）
+data/state.db*
+*.log
+logs/
+
+# ==== 构建产物 ====
+build/
+dist/
+# dist-next 等试打包目录
+dist-*/
+*.spec
+!packaging/*.spec
+
+# ==== 编辑器 / 系统 ====
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+~$*

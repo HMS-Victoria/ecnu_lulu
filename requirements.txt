@@ -1,0 +1,38 @@
+# 大夏学堂录播转写助手 —— 依赖锁定（Python 3.11+，实测于 3.12.13 / Windows 11）
+# 安装：python -m venv .venv && .venv\Scripts\python -m pip install -r requirements.txt
+
+# --- 网络 ---
+httpx[http2]==0.28.1
+h2==4.1.0
+httpcore==1.0.7
+certifi==2024.8.30
+
+# --- 登录 / 抓包（仅登录与接口侦察阶段使用）---
+playwright==1.49.1
+greenlet==3.1.1
+pyee==12.0.0
+
+# --- GUI ---
+PySide6==6.8.1.1
+PySide6-Essentials==6.8.1.1
+PySide6-Addons==6.8.1.1
+shiboken6==6.8.1.1
+
+# --- 媒体（ffmpeg；优先随包 / 系统 ffmpeg，imageio-ffmpeg 作为兜底）---
+imageio-ffmpeg==0.5.1
+
+# --- 凭据加密（Windows DPAPI）---
+pywin32==308
+keyring==25.5.0
+
+# --- 转写辅助 ---
+srt==3.5.3
+tenacity==9.0.0
+python-dotenv==1.0.1
+
+# --- 打包 ---
+pyinstaller==6.11.1
+pyinstaller-hooks-contrib==2024.11
+
+# --- 测试 ---
+pytest==8.3.4

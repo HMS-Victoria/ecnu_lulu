@@ -1,0 +1,41 @@
+# 统一换行与二进制判定。
+#
+# 为什么必须有这个文件：本项目的产物写出逻辑**明确要求 LF**
+# （见 docs/ARCHITECTURE.md §3.2：「换行恒为 LF」），而 Windows 上
+# `core.autocrlf=true` 会把文本文件在 checkout 时换成 CRLF、提交时又换回 LF。
+# 对 .py / .md 无害，但会让「同一份文件在不同机器上字节不同」，
+# 使依赖精确字节比对的测试（编码/BOM/换行）出现只在别人机器上复现的失败。
+# 显式声明 text=lf 后，无论克隆者本地怎么配，拿到的都是 LF。
+
+# 所有文本文件一律 LF
+* text=auto eol=lf
+
+# Windows 专用脚本保留 CRLF（给人用记事本打开的场景）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制：禁止任何换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.mp3 binary
+*.mp4 binary
+*.srt binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.db binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+
+# 让 GitHub 语言统计不要把这些算进代码量
+*.md linguist-documentation
+PROGRESS.md linguist-documentation
+CHANGELOG.md linguist-documentation
+docs/* linguist-documentation
+tests/fixtures/* linguist-vendored

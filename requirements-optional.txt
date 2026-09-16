@@ -1,0 +1,19 @@
+# 可选依赖：本地语音识别（无需任何云 API Key，音频不出本机）
+#
+#   .venv\Scripts\python -m pip install -r requirements-optional.txt
+#   .venv\Scripts\python scripts\local_asr_server.py --model small --port 8000
+#
+# 然后在应用里：设置 → 语音识别 → 类型 = OpenAI 兼容端点
+#               Base URL = http://127.0.0.1:8000/v1
+#               模型     = faster-whisper-small
+#               API Key  = 留空
+#
+# 说明：
+#   * 首次运行会自动从 HuggingFace 下载模型（tiny≈75MB / small≈500MB / medium≈1.5GB / large-v3≈3GB）。
+#   * `ctranslate2` 默认是 **CPU-only** 构建；想要 GPU 加速需另装带 CUDA 的版本，
+#     否则引擎会报 `Library cublas64_12.dll is not found`
+#     （本项目已内置真实前向自检，会自动回退 CPU，不会让服务起得来却一转写就 500）。
+#   * 不想装这些依赖时，用云端的 DashScope / 任意 OpenAI 兼容端点即可，主程序不受影响。
+
+faster-whisper==1.2.1
+ctranslate2==4.8.2
