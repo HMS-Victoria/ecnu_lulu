@@ -340,3 +340,16 @@ class ConfigManager:
         """返回深拷贝，避免工作线程读到写一半的配置。"""
         with self._lock:
             return copy.deepcopy(self._cfg)
+
+    def worker_snapshot(self, cfg: AppConfig | None = None, *, secrets: dict[str, str] | None = None) -> "ConfigManager":
+        """只在内存中保存本批配置和密钥；运行中保存设置不影响当前任务。"""
+        with self._lock:
+            result = ConfigManager(self.config_file, self.secrets_file)
+            result._cfg = copy.deepcopy(cfg if cfg is not None else self._cfg)
+            result._secrets = {key: self.secret(key) for key in ("asr_api_key", "llm_api_key")}
+            if secrets:
+                result._secrets.update(secrets)
+                for value in secrets.values():
+                    if value:
+                        register_secret(value)
+            return result

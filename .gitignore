@@ -34,6 +34,13 @@ build/
 dist/
 # dist-next 等试打包目录
 dist-*/
+# 本地交接与原始验收证据，公开说明单独维护。
+docs/HANDOFF_*.md
+docs/UI_REFACTOR_PLAN_*.md
+docs/ui-refactor/
+docs/releases/evidence/
+docs/releases/PACKAGING_*.md
+docs/releases/PUBLISH_*.md
 *.spec
 !packaging/*.spec
 

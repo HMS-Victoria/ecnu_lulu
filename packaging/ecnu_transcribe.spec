@@ -14,7 +14,7 @@
 * ``--onedir``（不是 onefile）：启动快、杀软误报少、便于携带 ffmpeg。
 * 内嵌 ffmpeg：优先复制仓库 ``assets/ffmpeg.exe``；没有就复制
   ``imageio-ffmpeg`` 自带的那份（保证「装完依赖就能打包出可用 exe」）。
-* 排除无用的大块依赖（matplotlib/numpy/tk 等），控制体积。
+* 排除无用的大块依赖（matplotlib/tk 等）；保留本地识别需要的 numpy。
 * ``console=False``：GUI 应用不弹黑窗。
 """
 
@@ -82,22 +82,27 @@ if ffmpeg_src is not None:
 # 数据文件
 # --------------------------------------------------------------------------- #
 datas: list[tuple[str, str]] = []
-for extra in (ROOT / "README.md", ROOT / "requirements.txt", ROOT / "PROGRESS.md", ROOT / "CHANGELOG.md"):
+for extra in (ROOT / "README.md", ROOT / "requirements.txt", ROOT / "LICENSE", ROOT / "CHANGELOG.md"):
     if extra.is_file():
         datas.append((str(extra), "."))
-docs_dir = ROOT / "docs"
-if docs_dir.is_dir():
-    datas.append((str(docs_dir), "docs"))
+for name in ("ARCHITECTURE.md", "API.md", "ORIGINAL_SPEC.md", "releases/v0.12.0.md", "releases/使用说明_0.12.0.txt"):
+    doc = ROOT / "docs" / name
+    if doc.is_file():
+        datas.append((str(doc), str(Path("docs") / Path(name).parent)))
+# README 中的截图链接在离线包中也有效。
+for shot in (ASSETS / "shots").glob("*.png"):
+    datas.append((str(shot), "assets/shots"))
 
-# 把 scripts/ 一起打包：exe 支持 `--doctor` 自检，也能在冻结态复用这些工具
+# 只携带现有 EXE 入口使用的运行脚本，不递归带入验收脚本和缓存。
 scripts_dir = ROOT / "scripts"
-if scripts_dir.is_dir():
-    datas.append((str(scripts_dir), "scripts"))
-    print(f"[spec] 将打包 scripts/: {scripts_dir}")
+for name in ("doctor.py", "login.py"):
+    datas.append((str(scripts_dir / name), "scripts"))
 
 hiddenimports: list[str] = []
 hiddenimports += collect_submodules("ecnu_transcribe")
 hiddenimports += collect_submodules("app")
+# NumPy 的 C 扩展会动态导入这些模块，旧版打包钩子无法完整静态发现。
+hiddenimports += collect_submodules("numpy._core", filter=lambda name: ".tests" not in name)
 hiddenimports += [
     "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
     "win32crypt", "win32api", "win32con",
@@ -107,7 +112,7 @@ hiddenimports += [
 ]
 
 excludes = [
-    "matplotlib", "numpy", "pandas", "scipy", "tkinter", "test", "unittest",
+    "matplotlib", "pandas", "scipy", "tkinter", "test", "unittest",
     "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.Qt3DCore",
     "PySide6.QtCharts", "PySide6.QtDataVisualization", "PySide6.QtMultimedia",
     "PySide6.QtQuick", "PySide6.QtQml", "PySide6.QtBluetooth", "PySide6.QtDesigner",

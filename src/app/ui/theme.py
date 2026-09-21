@@ -1,62 +1,30 @@
-"""界面主题：**自带的浅色高对比配色**（不跟随系统深色模式）。
-
-为什么需要它
-------------
-用户实测反馈「字体对比度太低，灰灰的看不清」。根因不是"选了浅灰"，而是：
-
-* 这台机器的 Windows 处于**深色模式**（``AppsUseLightTheme = 0``），
-  Qt 于是给出**深色**背景；
-* 而界面里有一批文字被硬编码成**深灰**（``#333`` / ``#444`` / ``#555``）——
-  深灰字压在深色背景上，对比度极低，看起来就是"灰灰的、看不清"；
-* 应用此前**没有设置自己的调色板**，所以外观随系统漂移，没人能保证可读性。
-
-做法：启动时固定一套浅色高对比主题（Fusion + 显式 QPalette + QSS）。
-配色都按 WCAG 2.1 挑过，正文对比度 ≥ 12:1，次要文字 ≥ 7:1（阈值见
-``scripts/verify_contrast.py``，那里会把这些数字**算出来**而不是"看着差不多"）。
-
-以后新增文字颜色请从这里取常量，不要写字面量 —— 否则又会随主题漂移。
-"""
-
+"""温暖书房：固定调色板与原生 Qt 控件，保证系统深色模式下仍然清晰。"""
 from __future__ import annotations
 
-# --------------------------------------------------------------------------- #
-# 配色（全部按 WCAG 2.1 选过；括号里是相对下方背景的对比度）
-# --------------------------------------------------------------------------- #
-BG = "#ffffff"            # 主背景
-BG_ALT = "#f3f5f7"        # 交替行 / 次级面板
-BG_INPUT = "#ffffff"      # 输入框
-BORDER = "#c8d1da"        # 分隔线、边框（非文字，只需可见）
-BORDER_STRONG = "#9aa7b4"
-
-TEXT = "#16191d"          # 正文        白底 16.9:1
-TEXT_STRONG = "#000000"   # 标题        白底 21:1
-TEXT_MUTED = "#414850"    # 次要说明    白底 9.5:1
-TEXT_FAINT = "#5a636c"    # 最弱提示    白底 6.6:1（仍高于 AA 的 4.5:1）
-
-ACCENT = "#0b4f9e"        # 链接 / 强调 白底 8.1:1
-ACCENT_TEXT = "#ffffff"   # 强调底上的文字 8.1:1
-OK = "#0b6b2e"            # 成功        白底 6.6:1
-WARN = "#7a4b00"          # 警告        白底 7.6:1
-DANGER = "#a4160c"        # 错误        白底 7.6:1
-
-#: 状态提示条的底色 + 边框（文字仍用上面的高对比色）
-NOTICE_BG = "#fff6e0"
-NOTICE_BORDER = "#e0b95c"
-INFO_BG = "#e8f1fd"
-INFO_BORDER = "#8ab6e8"
-
-#: 等宽日志区（浅底深字，长时间盯也不累）
-LOG_BG = "#fbfcfd"
-LOG_TEXT = "#16191d"
-
-#: 字号：9pt 在 1080p 上偏小（用户反馈"看不清"的一部分）
-BASE_FONT_PT = 10
+BG = "#FFFEFA"
+BG_ALT = "#F6F3EC"
+BG_INPUT = "#FFFEFA"
+BORDER = "#DDDCD2"
+BORDER_STRONG = "#8B978D"
+TEXT = "#263A32"
+TEXT_STRONG = "#203B2E"
+TEXT_MUTED = "#4B574E"
+TEXT_FAINT = "#59645A"
+ACCENT = "#285846"
+ACCENT_TEXT = "#FFFEFA"
+OK = "#285846"
+WARN = "#775016"
+DANGER = "#A13229"
+NOTICE_BG = "#FBF1DB"
+NOTICE_BORDER = "#D3BE87"
+INFO_BG = "#E7EEE5"
+INFO_BORDER = "#A8BCA8"
+LOG_BG = "#FFFEFA"
+LOG_TEXT = TEXT
+BASE_FONT_PT = 11
 LOG_FONT_PT = 10
-
-#: 中文字体优先级（缺字时逐个回退）
 FONT_FAMILIES = ("Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "sans-serif")
-MONO_FAMILIES = ("Cascadia Mono", "Consolas", "JetBrains Mono", "monospace")
-
+MONO_FAMILIES = ("Cascadia Mono", "Consolas", "monospace")
 
 def contrast_ratio(fg: str, bg: str) -> float:
     """WCAG 2.1 对比度：(L1+0.05)/(L2+0.05)，1.0~21.0。"""
@@ -86,145 +54,72 @@ def _rgb(color: str) -> tuple[int, int, int]:
 # 应用主题
 # --------------------------------------------------------------------------- #
 def stylesheet() -> str:
-    """返回全局 QSS。所有颜色都来自本模块常量（不写字面量）。"""
     return f"""
-    QWidget {{
-        color: {TEXT};
-        background-color: {BG};
-    }}
-    QMainWindow, QDialog {{ background-color: {BG}; }}
-
-    QLabel {{ color: {TEXT}; background: transparent; }}
-    QLabel[role="hint"] {{ color: {TEXT_MUTED}; }}
-    QLabel[role="muted"] {{ color: {TEXT_FAINT}; }}
-    QLabel[role="title"] {{ color: {TEXT_STRONG}; font-weight: 700; }}
+    QWidget {{ color: {TEXT}; background-color: {BG}; }}
+    QMainWindow, QDialog, QStatusBar, QToolBar {{ background-color: {BG_ALT}; }}
+    QLabel {{ background: transparent; }}
+    QLabel[role="brand"] {{ font-size: 18px; font-weight: 600; padding: 8px 14px; }}
+    QLabel[role="heading"] {{ font-size: 26px; font-weight: 700; color: {TEXT_STRONG}; }}
+    QLabel[role="section"] {{ font-size: 17px; font-weight: 600; padding: 6px 0; }}
+    QLabel[role="hint"], QLabel[role="muted"] {{ color: {TEXT_MUTED}; }}
+    QLabel[role="empty"] {{ color: {TEXT_MUTED}; padding: 24px; font-size: 16px; }}
     QLabel[role="danger"] {{ color: {DANGER}; }}
     QLabel[role="ok"] {{ color: {OK}; }}
-
-    QGroupBox {{
-        border: 1px solid {BORDER};
-        border-radius: 6px;
-        margin-top: 10px;
-        padding: 10px 8px 8px 8px;
-        font-weight: 600;
-    }}
-    QGroupBox::title {{
-        subcontrol-origin: margin;
-        left: 10px;
-        padding: 0 4px;
-        color: {TEXT_STRONG};
-    }}
-
-    QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-        color: {TEXT};
-        background-color: {BG_INPUT};
-        border: 1px solid {BORDER};
-        border-radius: 4px;
-        padding: 3px 6px;
-        selection-background-color: {ACCENT};
-        selection-color: {ACCENT_TEXT};
-    }}
-    QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus,
-    QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
-        border: 1px solid {ACCENT};
-    }}
-    QComboBox QAbstractItemView {{
-        color: {TEXT};
-        background-color: {BG};
-        selection-background-color: {INFO_BG};
-        selection-color: {TEXT_STRONG};
-    }}
-
-    QPushButton {{
-        color: {TEXT};
-        background-color: {BG_ALT};
-        border: 1px solid {BORDER_STRONG};
-        border-radius: 4px;
-        padding: 5px 14px;
-        min-height: 18px;
-    }}
-    QPushButton:hover {{ background-color: #e7ebef; }}
-    QPushButton:pressed {{ background-color: #dbe1e7; }}
-    QPushButton:disabled {{ color: {TEXT_FAINT}; background-color: {BG_ALT}; border-color: {BORDER}; }}
-    QPushButton[role="primary"] {{
-        color: {ACCENT_TEXT}; background-color: {ACCENT}; border: 1px solid {ACCENT};
-        font-weight: 600;
-    }}
-    QPushButton[role="primary"]:hover {{ background-color: #0a4489; }}
-    QPushButton[role="primary"]:disabled {{ background-color: #9db8d6; border-color: #9db8d6; }}
-
-    QToolBar {{ background-color: {BG_ALT}; border-bottom: 1px solid {BORDER}; spacing: 4px; }}
-    QToolBar QToolButton {{ color: {TEXT}; padding: 4px 8px; border-radius: 4px; }}
-    QToolBar QToolButton:hover {{ background-color: #e2e7ec; }}
-    QToolBar QToolButton:disabled {{ color: {TEXT_FAINT}; }}
-
-    QStatusBar {{ color: {TEXT}; background-color: {BG_ALT}; }}
+    QFrame[role="card"] {{ border: 1px solid {BORDER}; border-radius: 10px; }}
+    QFrame[role="notice"] {{ background: {NOTICE_BG}; border: 1px solid {NOTICE_BORDER}; border-radius: 8px; }}
+    QFrame[role="notice"] QLabel {{ background: transparent; }}
+    QToolBar {{ border: none; padding: 10px 16px; spacing: 10px; }}
+    QToolBar QWidget {{ background: transparent; }}
+    QStatusBar {{ padding: 2px 18px; border-top: 1px solid {BORDER}; }}
     QStatusBar::item {{ border: none; }}
-
+    QPushButton, QToolButton {{
+        background: {BG}; color: {TEXT}; border: 1px solid {BORDER};
+        border-radius: 7px; padding: 7px 12px; min-height: 20px;
+    }}
+    QPushButton:hover, QToolButton:hover {{ background: {INFO_BG}; border-color: {BORDER_STRONG}; }}
+    QPushButton:pressed, QToolButton:pressed, QPushButton:checked {{ background: {INFO_BG}; border-color: {ACCENT}; }}
+    QPushButton:focus, QToolButton:focus {{ border: 2px solid {ACCENT}; padding: 6px 11px; }}
+    QPushButton[role="primary"], QToolButton[role="primary"] {{ background: {ACCENT}; color: {ACCENT_TEXT}; border-color: {ACCENT}; font-weight: 600; }}
+    QPushButton[role="primary"]:hover, QToolButton[role="primary"]:hover {{ background: {TEXT_STRONG}; }}
+    QPushButton:disabled, QToolButton:disabled, QPushButton[role="primary"]:disabled, QToolButton[role="primary"]:disabled {{ color: {TEXT_FAINT}; background: {BG_ALT}; border-color: {BORDER}; }}
+    QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
+        color: {TEXT}; background: {BG_INPUT}; border: 1px solid {BORDER};
+        border-radius: 6px; padding: 7px 8px; selection-background-color: {ACCENT}; selection-color: {ACCENT_TEXT};
+    }}
+    QLineEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{ border-color: {ACCENT}; }}
+    QComboBox {{ min-width: 110px; padding-right: 24px; }}
+    QComboBox QAbstractItemView {{ background: {BG}; color: {TEXT}; selection-background-color: {INFO_BG}; selection-color: {TEXT}; }}
     QTreeWidget, QTableWidget, QListWidget {{
-        color: {TEXT};
-        background-color: {BG};
-        alternate-background-color: {BG_ALT};
-        border: 1px solid {BORDER};
-        gridline-color: {BORDER};
-        selection-background-color: {ACCENT};
-        selection-color: {ACCENT_TEXT};
+        border: none; background: {BG}; alternate-background-color: {BG_ALT};
+        selection-background-color: {INFO_BG}; selection-color: {TEXT_STRONG}; outline: 0;
     }}
-    QTreeWidget::item, QTableWidget::item, QListWidget::item {{ padding: 3px 2px; }}
-    QTreeWidget::item:selected, QTableWidget::item:selected, QListWidget::item:selected {{
-        color: {ACCENT_TEXT}; background-color: {ACCENT};
-    }}
-    QHeaderView::section {{
-        color: {TEXT_STRONG};
-        background-color: {BG_ALT};
-        border: none;
-        border-right: 1px solid {BORDER};
-        border-bottom: 1px solid {BORDER};
-        padding: 5px 6px;
-        font-weight: 600;
-    }}
-    QTableCornerButton::section {{ background-color: {BG_ALT}; border: 1px solid {BORDER}; }}
-
-    QTabWidget::pane {{ border: 1px solid {BORDER}; }}
-    QTabBar::tab {{
-        color: {TEXT}; background: {BG_ALT};
-        border: 1px solid {BORDER}; border-bottom: none;
-        padding: 6px 14px; margin-right: 2px;
-    }}
-    QTabBar::tab:selected {{ color: {TEXT_STRONG}; background: {BG}; font-weight: 600; }}
-    QTabBar::tab:hover {{ background: #e7ebef; }}
-
-    QCheckBox, QRadioButton {{ color: {TEXT}; }}
+    QTreeWidget::item, QTableWidget::item {{ padding: 7px 8px; border-bottom: 1px solid {BORDER}; }}
+    QListWidget::item {{ padding: 12px; margin: 3px 0; border-radius: 8px; }}
+    QTreeWidget::item:selected, QTableWidget::item:selected, QListWidget::item:selected {{ background: {INFO_BG}; color: {TEXT_STRONG}; }}
+    QTreeWidget::item:hover, QTableWidget::item:hover, QListWidget::item:hover {{ background: {BG_ALT}; }}
+    QTreeWidget:focus, QTableWidget:focus, QListWidget:focus {{ border: 1px solid {ACCENT}; }}
+    QListWidget#courseList {{ background: {BG_ALT}; border-radius: 10px; }}
+    QHeaderView::section {{ color: {TEXT_MUTED}; background: {BG}; border: none; border-bottom: 1px solid {BORDER}; padding: 10px 8px; }}
+    QTabWidget::pane {{ border: 1px solid {BORDER}; border-radius: 10px; background: {BG}; top: -1px; }}
+    QTabBar::tab {{ background: {BG_ALT}; color: {TEXT_MUTED}; padding: 12px 24px; border-bottom: 3px solid transparent; }}
+    QTabBar::tab:selected {{ color: {ACCENT}; border-bottom: 3px solid {ACCENT}; font-weight: 600; }}
+    QTabBar::tab:hover {{ background: {INFO_BG}; }}
+    QCheckBox, QRadioButton {{ spacing: 8px; background: transparent; }}
     QCheckBox:disabled, QRadioButton:disabled {{ color: {TEXT_FAINT}; }}
-
-    QMenu {{ color: {TEXT}; background-color: {BG}; border: 1px solid {BORDER}; }}
-    QMenu::item:selected {{ color: {TEXT_STRONG}; background-color: {INFO_BG}; }}
-    QMenuBar {{ color: {TEXT}; background-color: {BG_ALT}; }}
-    QMenuBar::item:selected {{ background-color: #e2e7ec; }}
-
-    QScrollBar:vertical {{ background: {BG_ALT}; width: 12px; margin: 0; }}
-    QScrollBar::handle:vertical {{ background: {BORDER_STRONG}; border-radius: 5px; min-height: 24px; }}
-    QScrollBar::handle:vertical:hover {{ background: #7d8b99; }}
-    QScrollBar:horizontal {{ background: {BG_ALT}; height: 12px; margin: 0; }}
-    QScrollBar::handle:horizontal {{ background: {BORDER_STRONG}; border-radius: 5px; min-width: 24px; }}
+    QGroupBox {{ border: 1px solid {BORDER}; border-radius: 10px; margin-top: 16px; padding: 16px 12px 12px; font-weight: 600; }}
+    QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 6px; }}
+    QScrollArea {{ border: none; }}
+    QScrollBar:vertical {{ background: {BG_ALT}; width: 10px; }}
+    QScrollBar:horizontal {{ background: {BG_ALT}; height: 10px; }}
+    QScrollBar::handle {{ background: {BORDER_STRONG}; border-radius: 4px; min-height: 24px; min-width: 24px; }}
     QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
-
-    QToolTip {{
-        color: {TEXT_STRONG};
-        background-color: {NOTICE_BG};
-        border: 1px solid {NOTICE_BORDER};
-        padding: 4px 6px;
-    }}
-    QProgressBar {{
-        color: {TEXT_STRONG};
-        background-color: {BG_ALT};
-        border: 1px solid {BORDER};
-        border-radius: 4px;
-        text-align: center;
-    }}
-    QProgressBar::chunk {{ background-color: {ACCENT}; }}
-
-    QSplitter::handle {{ background-color: {BORDER}; }}
+    QProgressBar {{ background: {BG_ALT}; color: {TEXT}; border: 1px solid {BORDER}; border-radius: 5px; text-align: center; }}
+    QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
+    QSplitter::handle {{ background: {BG}; width: 8px; }}
+    QMenu {{ background: {BG}; border: 1px solid {BORDER}; padding: 6px; }}
+    QMenu::item {{ padding: 8px 20px; }}
+    QMenu::item:selected {{ background: {INFO_BG}; color: {TEXT}; }}
+    QToolTip {{ color: {TEXT}; background: {NOTICE_BG}; border: 1px solid {NOTICE_BORDER}; padding: 6px; }}
     """
 
 
@@ -274,7 +169,7 @@ def apply_theme(app) -> None:
         from ecnu_transcribe.logbus import get_logger
 
         get_logger("theme").info(
-            "界面主题：浅色高对比（正文 %s / 底 %s，对比度 %.1f:1，%d pt）",
+            "界面主题：温暖书房（正文 %s / 底 %s，对比度 %.1f:1，%d pt）",
             TEXT, BG, contrast_ratio(TEXT, BG), font.pointSize(),
         )
     except Exception:  # noqa: BLE001 — 日志失败不能影响界面

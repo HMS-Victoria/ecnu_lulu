@@ -80,6 +80,8 @@ _BARE_KEYS = (
 _BARE_ALT = "|".join(re.escape(k) for k in sorted(_BARE_KEYS, key=len, reverse=True))
 
 _REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # 明确标注为学号的数字不依赖前缀或此前的配置登记。
+    (re.compile(r"(学号\s*[:：=]?\s*)(\d{6,18})(?!\d)"), r"\1<REDACTED-SID>"),
     # Cookie: a=b; c=d
     (re.compile(r"(?i)\b(cookie|set-cookie)\s*[:=]\s*[^\r\n]*"), r"\1: <REDACTED>"),
     # Authorization: Bearer xxx
@@ -150,9 +152,8 @@ def _classify_numeric_run(run: str) -> str | None:
     判定必须**按长度精确匹配**，任何分支都不能对「其它长度」提前返回，
     否则会短路掉后面的规则（这里曾经踩过一次坑）。
 
-    注意：华东师大学号是 **10-11 位**且以 ``10`` 开头（如 ``20261234567``），
-    而手机号要求第二位在 ``3-9``，两者不冲突；以 ``10`` 开头的 10/11 位数字
-    更可能是学号，因此不做手机号掩码。
+    裸数字规则将以 ``10`` 开头的 10/11 位数字视为学号，手机号要求第二位在
+    ``3-9``。其他学号格式由显式「学号」标签或 register_identifier 处理。
     """
     n = len(run)
     if n == _ID_DIGIT_LENGTH:

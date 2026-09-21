@@ -70,9 +70,11 @@ def dialogs(monkeypatch):
 
 
 @pytest.fixture()
-def env(tmp_path, qapp, dialogs):
+def env(tmp_path, qapp, dialogs, monkeypatch):
     """搭一个真实 MainWindow（配置/状态库都指向临时目录）。"""
     from app.ui.main_window import MainWindow
+    startup_hints = MainWindow._startup_hints
+    monkeypatch.setattr(MainWindow, "_startup_hints", lambda self: None)
 
     cm = ConfigManager(config_file=tmp_path / "config.json", secrets_file=tmp_path / "secrets.json")
     cfg = cm.load()
@@ -86,6 +88,7 @@ def env(tmp_path, qapp, dialogs):
 
     store = StateStore(tmp_path / "state.db")
     win = MainWindow(cm, store)
+    win._test_startup_hints = lambda: startup_hints(win)
     win.show()
     qapp.processEvents()
     yield win, store, cfg, cm, dialogs
@@ -257,9 +260,9 @@ def test_auth_expired_stops_queue_and_asks_relogin(env, qapp, fake_pipeline):
     assert "登录" in done[0][2], done[0][2]
     # 队列在第一个任务失败后立刻停止，剩余任务不应被重复尝试
     assert len(fake_pipeline["calls"]) == 1, fake_pipeline["calls"]
-    # 应弹出「登录态失效」提示
-    titles = " ".join(t for _k, t, _x in dlg)
-    assert "登录" in titles, titles
+    # 日志关闭时也必须能看到登录失效及恢复入口。
+    assert "登录已过期" in win.notice_text.text()
+    assert win.notice_action.text() == "重新登录"
     assert win.lbl_login.text().startswith("登录态"), win.lbl_login.text()
 
 
@@ -460,7 +463,7 @@ def test_stale_session_triggers_startup_warning(env, qapp, fake_pipeline, monkey
     os.utime(stale, (old, old))
     monkeypatch.setattr(mw.paths, "storage_state_path", lambda: stale)
 
-    win._startup_hints()
+    win._test_startup_hints()
 
     text = win.log_view.toPlainText()
     assert "很可能已过期" in text, text[-400:]
@@ -521,9 +524,10 @@ def test_filter_hides_nonmatching_rows(env, qapp, fake_pipeline):
 
     win.edit_search.setText("")
     qapp.processEvents()
-    assert not any(
-        win.tree.topLevelItem(i).isHidden() for i in range(win.tree.topLevelItemCount())
-    ), "清空搜索后应全部可见"
+    visible = [win.tree.topLevelItem(i) for i in range(win.tree.topLevelItemCount())
+               if not win.tree.topLevelItem(i).isHidden()]
+    assert len(visible) == 1, "清空搜索后回到当前课程"
+    assert visible[0].data(0, Qt.UserRole)["course_id"] == win._selected_course
 
 
 def test_check_untranscribed_skips_done_tasks(env, qapp, fake_pipeline):

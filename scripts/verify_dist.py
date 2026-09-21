@@ -63,6 +63,7 @@ def run_exe(exe: Path, args: list[str], *, env: dict[str, str], timeout: float =
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="打包产物干净环境验证")
+    ap.add_argument("--dist", default=str(DIST), help="待验证的程序目录")
     ap.add_argument("--target", default=r"C:\ecnu-clean-test", help="复制到的纯 ASCII 目录")
     ap.add_argument("--keep", action="store_true", help="保留复制出来的目录（便于手工检查）")
     args = ap.parse_args()
@@ -73,25 +74,27 @@ def main() -> int:
 
     # ---------- 0) 源产物 ---------- #
     print("\n[0] 检查 dist 产物")
-    exe_src = DIST / EXE_NAME
+    dist = Path(args.dist).resolve()
+    exe_src = dist / EXE_NAME
     if not exe_src.is_file():
         print(f"⛔ 找不到 {exe_src}；先运行： python -m PyInstaller packaging/ecnu_transcribe.spec")
         return 1
     check("exe 存在", True, f"{exe_src.stat().st_size / 1024 / 1024:.1f} MB")
-    bundled_ffmpeg = DIST / "_internal" / "ffmpeg.exe"
+    bundled_ffmpeg = dist / "_internal" / "ffmpeg.exe"
     check("内嵌 ffmpeg", bundled_ffmpeg.is_file(),
           f"{bundled_ffmpeg.stat().st_size / 1024 / 1024:.0f} MB" if bundled_ffmpeg.is_file() else "缺失")
     if not bundled_ffmpeg.is_file():
         warn("ffmpeg 未内嵌", "目标机器需要自己装 ffmpeg")
 
     # ---------- 1) 复制到纯 ASCII 路径 ---------- #
-    target = Path(args.target)
+    target = Path(args.target).resolve()
     print(f"\n[1] 复制到纯 ASCII 路径：{target}")
     if target.exists():
-        shutil.rmtree(target, ignore_errors=True)
+        print(f"⛔ 验证目录已存在，请指定一个新目录：{target}")
+        return 1
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copytree(DIST, target)
+        shutil.copytree(dist, target)
     except OSError as exc:
         print(f"⛔ 复制失败：{exc}")
         return 1
@@ -104,6 +107,7 @@ def main() -> int:
     fake_local = target / "_fake_localappdata"
     fake_local.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
+    env.pop("ECNU_TRANSCRIBE_HOME", None)
     env["LOCALAPPDATA"] = str(fake_local)          # 不继承本机的 config/secrets/登录态
     env["QT_QPA_PLATFORM"] = "offscreen"           # 无显示器环境
     env["PYTHONIOENCODING"] = "utf-8"
@@ -136,7 +140,9 @@ def main() -> int:
     print("\n[4] 启动应用（--selftest，2 秒后自动退出）")
     code2, out2 = run_exe(exe, ["--selftest"], env=env, timeout=180)
     check("--selftest 退出码为 0", code2 == 0, f"exit={code2}")
-    check("frozen 模式识别正确", "frozen = True" in out2 or "frozen=True" in out2, "")
+    startup_log = target / "logs" / "app.log"
+    startup_text = out2 + (startup_log.read_text(encoding="utf-8", errors="replace") if startup_log.is_file() else "")
+    check("frozen 模式识别正确", "frozen = True" in startup_text or "frozen=True" in startup_text, "启动日志")
 
     # ---------- 5) 可携带的产物目录 ---------- #
     print("\n[5] 检查运行目录（应落在 exe 同级，可整体拷走）")

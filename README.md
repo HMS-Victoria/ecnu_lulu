@@ -2,14 +2,16 @@
 
 > 把「我有权限看的课程录播」变成**可搜索、可复习、带时间轴的文字稿** —— 一条本地优先的 Windows 桌面流水线。
 
+**Windows 下载：[v0.12.0 · 温暖书房](https://github.com/HMS-Victoria/ecnu_lulu/releases/tag/v0.12.0)**。完整解压 ZIP 后运行 EXE，无需安装 Python；浏览器、识别模型或云服务配置需另行准备。升级与验证范围见 [发布说明](docs/releases/v0.12.0.md)。
+
 <p align="center">
-  <img src="assets/shots/main_window.png" alt="主界面：左侧课程/录播清单，中间任务队列，右侧实时日志" width="100%">
+  <img src="assets/shots/main_window.png" alt="温暖书房：我的课程，录播列表与开始转写" width="100%">
   <br>
-  <sub>真实界面（离屏渲染截图）：左栏勾选录播 → 中栏看阶段/进度/重试/错误 → 右栏实时日志</sub>
+  <sub>真实 Qt 界面，演示数据离屏渲染：我的课程 → 转写任务；详细日志按需展开</sub>
 </p>
 
 <p align="center">
-  <img alt="tests" src="https://img.shields.io/badge/tests-405%20passed-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-426%20passed-brightgreen">
   <img alt="python" src="https://img.shields.io/badge/python-3.11%20%7C%203.12-blue">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4">
   <img alt="gui" src="https://img.shields.io/badge/GUI-PySide6%20(Qt)-41CD52">
@@ -90,7 +92,7 @@
 
 | 层 | 选型 |
 | --- | --- |
-| GUI | PySide6 6.8（Qt），单窗口三栏，阻塞 IO 全在 `QThread`，UI 只经信号槽 |
+| GUI | PySide6 6.8（Qt），课程/任务两页、折叠日志，阻塞 IO 全在 `QThread`，UI 只经信号槽 |
 | HTTP | httpx 0.28（同步客户端复用登录态 Cookie） |
 | 登录 / 抓包 | Playwright 1.49（可见 Chromium + 持久化 profile + CDP 事件抓包） |
 | 媒体 | ffmpeg（**唯一**的下载/切片/转码出口，`-vn -ac 1 -ar 16000 -c:a libmp3lame -b:a 64k`） |
@@ -105,7 +107,7 @@
 | 界面 `src/app/` | ~2.4k 行 |
 | 测试 `tests/` | ~6.6k 行 |
 | 工具与验证脚本 `scripts/` | ~4.5k 行 |
-| 自动化用例 | **405 个 pytest 用例**（全部离线、fixture 驱动） |
+| 自动化用例 | **426 个 pytest 用例**（全部离线、fixture 驱动） |
 
 ---
 
@@ -130,7 +132,8 @@
 
 | 验证套件 | 命令 | 结果 |
 | --- | --- | --- |
-| 单元 + 集成测试 | `.venv\Scripts\python -m pytest` | **405 passed**, 0 failed |
+| 单元 + 集成测试（2026-09-20） | `.venv\Scripts\python -m pytest` | **426 passed**, 1 deselected，0 failed |
+| 新界面布局与对比度（2026-09-20） | `python scripts\verify_ui_layout.py --scale 1.5`（另测 1 / 1.25） | 每档 51 项通过 |
 | 离线端到端（加密 HLS → 音频 → 三产物 → 续跑） | `python scripts\selftest_e2e.py` | 22 项通过 |
 | 清单客户端（本地模拟平台 + 真实 HTTP） | `python scripts\mock_platform.py` | 27 项通过 |
 | 暂停功能（真实流水线中途暂停/恢复/停止） | `python scripts\verify_pause.py` | 9 项通过 |
@@ -139,6 +142,8 @@
 | 打包产物干净环境（ASCII 路径 + 无 Python 环境） | `python scripts\verify_dist.py` | 20 项通过 |
 | 冻结态自检（含产物编码字节头） | `exe --doctor` | 20 项通过 |
 | 「绝不编造」底线（真实素材） | `python scripts\verify_silent_honesty.py` | 8 项通过 |
+
+除标注 2026-09-20 的两项，其余为已有版本的历史验收记录，本轮未重新执行这些独立脚本。新版 UI 的离线全流程、原生桌面实测范围和未验收项见 [发布与验证说明](docs/releases/v0.12.0.md)。
 
 **为什么集成测试要自己造加密 HLS**：真实平台不可达时，仍需验证「HLS 分片 + AES-128 key 请求带 Cookie
 + 相对路径还原 + 时长一致性」这条最容易出错、也最影响体感的链路。用 `ffmpeg -hls_key_info_file`
@@ -178,20 +183,26 @@ python -m venv .venv
 
 ### 首次运行
 
-1. **点顶部「登录」** → 弹出可见的 Chromium 窗口，在里面完成学校统一身份认证。
+1. **点顶部「登录学校账号」** → 弹出可见的 Chromium 窗口，在里面完成学校统一身份认证。
    应用**不接收、不保存密码**，遇到验证码/二次验证请手动完成；登录态自动保存复用。
-2. **点「刷新清单」** → 自动翻页拉取全量课程与录播，显示在左栏（带搜索、全选/反选、时长合计、是否已转写）。
+2. **点「刷新课程」** → 拉取课程与录播。在「我的课程」选择课程，搜索标题或讲师，再勾选录播。刷新不会自动加入任务。
 3. **设置（Ctrl+,）→ 语音识别** 二选一：
    - **零成本**：先跑 `python scripts\local_asr_server.py --model small`，
      类型选「OpenAI 兼容端点」，Base URL 填 `http://127.0.0.1:8000/v1`，API Key 留空；
    - **最准**：填阿里云百炼 DashScope 的 API Key，Base URL
      `https://dashscope.aliyuncs.com/compatible-mode/v1`，模型 `qwen3-asr-flash`。
-4. 左栏**勾选**录播 → **「加入队列」** → **「开始」**。
+4. 勾选录播 → **「开始转写」**。也可以先「加入待办」，稍后在「转写任务」点击「开始待办」。
 
-**拿不准缺什么？点「首启检查」（F2）。** 它会一次查完
+运行期间加入的新待办保留到下一批，由你点击开始。「暂停」会等待当前片段结束；「继续处理选中」复用已有缓存。完成后选中任务可打开实际生成的文稿、字幕、笔记或文件夹；「更多操作 → 重新识别选中」会在确认后重新识别。
+
+设置分为「语音识别、文字整理、文件保存、高级设置」，常用参数优先展示，其余按需展开。保存仅用于下一批，取消不会修改配置。底部「查看详细日志」可展开记录；登录过期等问题会直接显示下一步操作。
+
+窄窗口可用「课程列表」收起侧栏，设置内容可纵向滚动。新版实施与验收记录见 [发布与验证说明](docs/releases/v0.12.0.md)。
+
+**拿不准缺什么？点「更多 → 使用检查」（F2）。** 它会一次查完
 「输出目录 / ffmpeg / 浏览器 / 网络是否通 / 登录态 / 语音识别」，每个未通过项都给出可照做的动作。
 
-快捷键：`Ctrl+L` 登录、`F2` 首启检查、`F5` 刷新、`Ctrl+Enter` 加入队列、`Ctrl+R` 开始、`Ctrl+,` 设置。
+快捷键：`Ctrl+L` 登录、`F2` 使用检查、`F5` 刷新、`Ctrl+Enter` 加入待办、`Ctrl+R` 开始待办、`Ctrl+,` 设置。
 
 ---
 
@@ -298,7 +309,7 @@ src/app/                      PySide6 界面
     main.py  workers.py  ui/main_window.py  ui/settings_dialog.py  ui/theme.py
 scripts/                      命令行工具与验证脚本
 docs/                         ARCHITECTURE.md / API.md / ORIGINAL_SPEC.md
-tests/                        405 个离线用例（fixture 驱动）
+tests/                        426 个离线用例（fixture 驱动）
 assets/shots/                 README 用的界面截图（可重新生成）
 output/<课程名>/<标题>.{txt,srt,md}     ← 产物（默认）
 cache/media/                  音频缓存（断点续跑用）
@@ -356,6 +367,6 @@ Engineered for resumability and honesty rather than happy paths: byte-range stre
 duration verification, ASR-cache reuse keyed on audio SHA-256, a stall watchdog, pause gates at
 natural pipeline boundaries, audio-level diagnostics that distinguish "this recording is silent"
 from "your config is wrong", and a redaction layer covering every log and capture file.
-**405 offline tests** plus 525 automated checks across e2e, GUI, packaging and security suites.
+**426 offline tests** (one slow model test excluded). Release validation covers packaged startup, GUI behavior and security; real-service limitations are documented in the release notes.
 
 *MIT licensed. Not affiliated with or endorsed by East China Normal University.*

@@ -118,6 +118,7 @@ def build_store(tmp_root: Path):
     from ecnu_transcribe.store import Stage, StateStore, TaskRecord
 
     store = StateStore(tmp_root / "state.db")
+    resources = {r.title: r for r in build_catalog().resources}
     now = time.time()
     rows = [
         # (课程, 标题, 阶段, 进度, 重试, 已跑秒数, 错误)
@@ -133,8 +134,10 @@ def build_store(tmp_root: Path):
     ]
     for course, title, stage, prog, retry, elapsed, err in rows:
         started = now - elapsed if elapsed else 0.0
+        resource = resources.get(title)
         store.upsert_task(TaskRecord(
-            course=course, course_id="0", resource_id=title, title=title,
+            course=course, course_id=resource.course_id if resource else "demo",
+            resource_id=resource.resource_id if resource else title, title=title,
             stage=stage, progress=prog, retry=retry, error=err,
             output_dir=str(tmp_root / "output"),
             duration_sec=3000.0,
@@ -167,8 +170,8 @@ DEMO_LOGS = [
 def main() -> int:
     ap = argparse.ArgumentParser(description="生成展示用界面截图")
     ap.add_argument("--out", default=str(ROOT / "assets" / "shots"), help="截图输出目录")
-    ap.add_argument("--width", type=int, default=1760)
-    ap.add_argument("--height", type=int, default=940)
+    ap.add_argument("--width", type=int, default=1240)
+    ap.add_argument("--height", type=int, default=820)
     args = ap.parse_args()
 
     from PySide6.QtCore import QTimer
@@ -191,9 +194,11 @@ def main() -> int:
     theme.FONT_FAMILIES = (font_name, *theme.FONT_FAMILIES)
     theme.apply_theme(app)
 
-    out = Path(args.out)
+    out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     tmp_root = Path(tempfile.mkdtemp(prefix="ecnu-shots-"))
+    os.environ["ECNU_TRANSCRIBE_HOME"] = str(tmp_root)
+    os.environ["LOCALAPPDATA"] = str(tmp_root / "user")
 
     # 演示日志走真实 LogBus，于是界面渲染出来的就是真实格式（时间戳/级别/logger 名）
     LogBus.instance().clear()  # 从干净状态开始，避免重复
@@ -201,9 +206,12 @@ def main() -> int:
         get_logger(name).info(msg)
 
     cm = ConfigManager()
+    cm.load()
+    cm.set_secret("asr_api_key", "demo-not-a-real-key")
     store = build_store(tmp_root)
 
     win = MainWindow(cm, store)
+    win._startup_hints = lambda: None  # 展示数据不触发真实网络诊断。
     try:
         win.catalog = build_catalog()
         win._render_tree()  # noqa: SLF001
@@ -212,28 +220,26 @@ def main() -> int:
         for _level, msg in LogBus.instance().history():
             win.log_view.appendPlainText(msg)
         win._reload_tasks()  # noqa: SLF001
-        win.lbl_toolbar_status.setText("就绪 · 已登录（登录态 2 小时前保存）")
-        win.lbl_login.setText("登录态：有效")
+        win._login_verified = True
+        win._update_setup()
+        win.lbl_toolbar_status.setText("界面演示 · 模拟数据")
+        win.lbl_login.setText("演示账号 · 模拟数据")
         # 底部的清单缓存路径会带上截图机器的绝对路径，展示用改成相对写法
         win.lbl_catalog_stats.setText(win.lbl_catalog_stats.text().replace(str(ROOT), "<仓库根目录>"))
         win.resize(args.width, args.height)
-        # 三栏默认是 [560,560,420]（1440 宽下的合理分配）。截图更宽时把富余宽度
-        # 分给中栏任务队列，否则「进度/重试/耗时/错误详情」会被挤出可视区。
-        for sp in win.findChildren(QSplitter):
-            sp.setSizes([int(args.width * 0.26), int(args.width * 0.46), int(args.width * 0.28)])
         win.show()
-        # 中栏「标题」列是 Stretch 模式：resize 之后剩余宽度为负，Qt 会把它压到几乎为 0
-        # （截图里只看得到「第…」）。改成 Interactive 再显式给宽，标题与错误详情才可读。
-        from PySide6.QtWidgets import QHeaderView as _HV
-        win.table.horizontalHeader().setSectionResizeMode(0, _HV.Interactive)
-        win.table.setColumnWidth(0, 320)
-        win.table.setColumnWidth(6, 230)
         for _ in range(12):
             app.processEvents()
 
         main_png = out / "main_window.png"
         win.grab().save(str(main_png))
-        print(f"✅ {main_png.relative_to(ROOT)}  ({main_png.stat().st_size // 1024} KB)")
+        print(f"✅ {main_png}  ({main_png.stat().st_size // 1024} KB)")
+        win.pages.setCurrentIndex(1)
+        app.processEvents()
+        win.grab().save(str(out / "tasks.png"))
+        win.btn_logs.setChecked(True)
+        app.processEvents()
+        win.grab().save(str(out / "tasks_logs.png"))
 
         dlg = SettingsDialog(cm.load(), cm)
         dlg.resize(1040, 780)
@@ -242,7 +248,7 @@ def main() -> int:
             app.processEvents()
         dlg_png = out / "settings_dialog.png"
         dlg.grab().save(str(dlg_png))
-        print(f"✅ {dlg_png.relative_to(ROOT)}  ({dlg_png.stat().st_size // 1024} KB)")
+        print(f"✅ {dlg_png}  ({dlg_png.stat().st_size // 1024} KB)")
         dlg.close()
     finally:
         win.close()

@@ -46,9 +46,13 @@ def test_redact_phone_and_id():
     assert "11010119900307123X" not in out
 
 
-def test_redact_student_id():
+def test_redact_student_id(monkeypatch):
+    # 独立启动时也要生效，不能依赖其他用例登记过同一个标识。
+    monkeypatch.setattr(logbus, "_KNOWN_IDENTIFIERS", set())
     out = logbus.redact("学号 20261234567 已登录")
     assert "20261234567" not in out
+    assert "20261234567" not in logbus.redact("学号：20261234567")
+    assert "12345678901" in logbus.redact("任务编号 12345678901")
 
 
 def test_redact_does_not_mangle_ordinary_paths():

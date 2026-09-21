@@ -176,7 +176,9 @@ class PipelineWorker(QThread):
         self.cfg = cfg
         self.cm = cm
         self.store = store
-        self.items = items
+        self.cm = cm.worker_snapshot(cfg)
+        self.cfg = self.cm.cfg
+        self.items = list(items)
         self.force = force
         self._cancel = threading.Event()
         self._pause = threading.Event()
@@ -234,7 +236,7 @@ class PipelineWorker(QThread):
                     break
 
                 task = self.store.get_task(item.task_id)
-                if task is None:
+                if task is None or task.deleted:
                     continue
                 self._current_task_id = task.id
                 # 用队列里的最新 resource（可能被用户在 UI 上改过标题）
@@ -244,15 +246,22 @@ class PipelineWorker(QThread):
                         task.id, Stage.PENDING, progress=0.0, force=True,
                         error="", message="pipeline start",
                     )
-                    final = pipeline.run(task, resource, force=self.force)
+                    final = pipeline.run(task, resource, force=self.force or bool(task.meta.get("force_retranscribe")))
                     success = bool(final and final.stage == str(Stage.DONE))
                     if success:
                         ok += 1
+                        if task.meta.get("force_retranscribe"):
+                            meta = dict(final.meta)
+                            meta.pop("force_retranscribe", None)
+                            self.store.update_stage(task.id, Stage.DONE, meta=meta)
                     else:
                         fail += 1
                     self.task_done.emit(
                         task.id, success, (final.error if final and not success else "")
                     )
+                    if final and not success and final.error.startswith("登录态失效"):
+                        self.request_relogin.emit(final.error)
+                        break
                 except TaskCancelled:
                     self.store.update_stage(task.id, Stage.CANCELED, force=True, error="用户停止")
                     self.task_done.emit(task.id, False, "已停止")
@@ -322,7 +331,7 @@ class ProbeWorker(QThread):
         from ecnu_transcribe.llm import probe_llm
         from ecnu_transcribe.transcriber import probe_asr_endpoint
 
-        if "ffmpeg" in self.which:
+        if "ffmpeg" in self.which and not self.isInterruptionRequested():
             try:
                 exe = media.find_ffmpeg(self.cfg.ffmpeg_path)
                 ver = media.ffmpeg_version(exe)
@@ -330,7 +339,7 @@ class ProbeWorker(QThread):
             except Exception as exc:  # noqa: BLE001
                 self.result.emit("ffmpeg", False, str(exc))
 
-        if "site" in self.which:
+        if "site" in self.which and not self.isInterruptionRequested():
             try:
                 client = EcnuClient(self.cfg, config_manager=self.cm, session=load_session_state())
                 diag = client.diagnose_access()
@@ -339,7 +348,7 @@ class ProbeWorker(QThread):
             except Exception as exc:  # noqa: BLE001
                 self.result.emit("站点", False, str(exc))
 
-        if "asr" in self.which:
+        if "asr" in self.which and not self.isInterruptionRequested():
             try:
                 key = self.cm.secret("asr_api_key")
                 ok, msg = probe_asr_endpoint(self.cfg, key)
@@ -347,7 +356,7 @@ class ProbeWorker(QThread):
             except Exception as exc:  # noqa: BLE001
                 self.result.emit("ASR", False, str(exc))
 
-        if "llm" in self.which:
+        if "llm" in self.which and not self.isInterruptionRequested():
             try:
                 key = self.cm.secret("llm_api_key")
                 if not key:

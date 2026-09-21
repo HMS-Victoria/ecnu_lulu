@@ -283,7 +283,7 @@ def test_jitter_max_is_clamped_to_min(env):
     dlg.spin_jitter_min.setValue(2.0)
     dlg.spin_jitter_max.setValue(0.5)
     dlg.on_save()
-    assert cfg.jitter_max >= cfg.jitter_min
+    assert _cm.cfg.jitter_max >= _cm.cfg.jitter_min
 
 
 def test_bitrate_roundtrip_is_stable(env):
@@ -292,7 +292,7 @@ def test_bitrate_roundtrip_is_stable(env):
     for value in (32, 64, 128, 192, 320):
         dlg.spin_bitrate.setValue(value)
         dlg.on_save()
-        assert cfg.audio_bitrate == f"{value}k", cfg.audio_bitrate
+        assert _cm.cfg.audio_bitrate == f"{value}k", _cm.cfg.audio_bitrate
 
 
 def test_dialog_accepts_on_save(env):

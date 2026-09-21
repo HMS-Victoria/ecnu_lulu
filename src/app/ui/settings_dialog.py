@@ -12,6 +12,8 @@ API Key 用 Windows DPAPI 加密后存到 ``%LOCALAPPDATA%\\ecnu-transcribe\\sec
 
 from __future__ import annotations
 
+import copy
+from dataclasses import asdict, fields
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -32,7 +34,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QTabWidget,
+    QListWidget,
+    QStackedWidget,
+    QToolButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -44,12 +49,12 @@ from ..workers import ProbeWorker
 from . import theme
 
 ASR_PRESETS: list[tuple[str, str, str, str]] = [
-    ("① 本地 faster-whisper（零成本、无需 Key、音频不出本机）", "openai_compatible", "http://127.0.0.1:8000/v1", "faster-whisper-small"),
-    ("② 阿里云百炼 DashScope（中文课堂最准，推荐）", "dashscope", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3-asr-flash"),
-    ("③ 硅基流动 SiliconFlow", "openai_compatible", "https://api.siliconflow.cn/v1", "FunAudioLLM/SenseVoiceSmall"),
-    ("④ OpenAI 官方", "openai_compatible", "https://api.openai.com/v1", "whisper-1"),
-    ("⑤ 本地 faster-whisper 进程内模式（实验性，不推荐）", "faster_whisper_local", "", "small"),
-    ("⑥ 自定义 OpenAI 兼容端点", "openai_compatible", "", ""),
+    ("本地语音服务（需先启动）", "openai_compatible", "http://127.0.0.1:8000/v1", "faster-whisper-small"),
+    ("阿里云百炼", "dashscope", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3-asr-flash"),
+    ("硅基流动", "openai_compatible", "https://api.siliconflow.cn/v1", "FunAudioLLM/SenseVoiceSmall"),
+    ("OpenAI", "openai_compatible", "https://api.openai.com/v1", "whisper-1"),
+    ("本机识别模型（需安装）", "faster_whisper_local", "", "small"),
+    ("自定义兼容服务", "openai_compatible", "", ""),
 ]
 
 #: 「预设」下拉里代表「当前配置不匹配任何预设」的那一项。
@@ -57,54 +62,124 @@ ASR_PRESETS: list[tuple[str, str, str, str]] = [
 #: 只按 provider 反查会把「本地服务」显示成「OpenAI 官方」，用户会被误导。
 CUSTOM_PRESET_LABEL = "（自定义 / 当前配置）"
 
-#: 本地 ASR 服务的启动指引（写进设置页说明里，避免用户不知道有这个选项）
-LOCAL_ASR_HINT = (
-    "启动本地 ASR 服务（零成本，不需要任何云 Key）：<br>"
-    "<code>.venv\\Scripts\\python scripts\\local_asr_server.py --model small --port 8000</code><br>"
-    "然后把上面的「预设」选 <b>①</b>，并点「连通性自检」确认可用。"
-)
-
-
 class SettingsDialog(QDialog):
     def __init__(self, cfg: AppConfig, cm: ConfigManager, parent=None) -> None:
         super().__init__(parent)
         self.cm = cm
-        self.cfg = cfg
+        self.cfg = copy.deepcopy(cfg)
         self.setWindowTitle("设置")
-        self.resize(900, 720)
+        self.resize(980, 740)
+        from PySide6.QtGui import QGuiApplication
+        screen = QGuiApplication.primaryScreen()
+        if screen:
+            rect = screen.availableGeometry()
+            self.resize(min(980, rect.width() - 60), min(740, rect.height() - 80))
         self._probe_worker: ProbeWorker | None = None
 
         outer = QVBoxLayout(self)
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self._tab_asr(), "语音识别（ASR）")
-        self.tabs.addTab(self._tab_llm(), "文本加工（DeepSeek）")
-        self.tabs.addTab(self._tab_output(), "输出与产物")
-        self.tabs.addTab(self._tab_media(), "下载与媒体")
-        self.tabs.addTab(self._tab_network(), "网络与登录")
-        self.tabs.addTab(self._tab_advanced(), "高级")
-        outer.addWidget(self.tabs, 1)
+        outer.setContentsMargins(20, 18, 20, 18)
+        title = QLabel("设置")
+        title.setProperty("role", "heading")
+        outer.addWidget(title)
+        self.settings_hint = QLabel("设置保存后用于下一批任务，正在进行的转写不受影响。")
+        self.settings_hint.setWordWrap(True)
+        self.settings_hint.setProperty("role", "hint")
+        outer.addWidget(self.settings_hint)
+        body = QHBoxLayout()
+        self.navigation = QListWidget()
+        self.navigation.setFixedWidth(145)
+        self.navigation.setObjectName("courseList")
+        self.navigation.addItems(["语音识别", "文字整理", "文件保存", "高级设置"])
+        from PySide6.QtCore import QSize
+        for i in range(self.navigation.count()):
+            self.navigation.item(i).setSizeHint(QSize(120, 48))
+        self.tabs = QStackedWidget()
+        self.tabs.addWidget(self._tab_asr())
+        self.tabs.addWidget(self._tab_llm())
+        self.tabs.addWidget(self._tab_output())
+        advanced = QWidget()
+        advanced_layout = QVBoxLayout(advanced)
+        advanced_layout.addWidget(self._fold("下载与音频参数", self._tab_media().takeWidget()))
+        advanced_layout.addWidget(self._fold("网络与登录信息", self._tab_network().takeWidget()))
+        advanced_layout.addWidget(self._fold("缓存与诊断详情", self._tab_advanced()))
+        advanced_layout.addStretch()
+        self.tabs.addWidget(self._scrolled(advanced))
+        self.navigation.currentRowChanged.connect(self.tabs.setCurrentIndex)
+        self.navigation.setCurrentRow(0)
+        body.addWidget(self.navigation)
+        body.addWidget(self.tabs, 1)
+        outer.addLayout(body, 1)
 
         self.lbl_probe = QLabel("")
         self.lbl_probe.setWordWrap(True)
+        self.lbl_probe.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.lbl_probe.setStyleSheet(
             f"color:{theme.TEXT}; background:{theme.BG_ALT}; padding:6px; border-radius:4px;"
         )
         outer.addWidget(self.lbl_probe)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Save).setText("保存")
+        buttons.button(QDialogButtonBox.Save).setText("保存设置")
+        buttons.button(QDialogButtonBox.Save).setProperty("role", "primary")
         buttons.button(QDialogButtonBox.Cancel).setText("取消")
-        self.btn_check = buttons.addButton("连通性自检", QDialogButtonBox.ActionRole)
+        self.btn_check = buttons.addButton("检查连接", QDialogButtonBox.ActionRole)
         self.btn_check.clicked.connect(self.on_probe)
         buttons.accepted.connect(self.on_save)
         buttons.rejected.connect(self.reject)
         outer.addWidget(buttons)
 
         self._load()
+        self.llm_options.setVisible(self.chk_llm.isChecked())
+        self._baseline_values = asdict(self._read_form())
+        self._saved_keys = {"asr_api_key": self.edit_key.text(), "llm_api_key": self.edit_llm_key.text()}
+        self._update_service_hint()
+        for form in self.findChildren(QFormLayout):
+            form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+            form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+            form.setVerticalSpacing(14)
+        for combo in self.findChildren(QComboBox):
+            combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(12)
+        for label in self.findChildren(QLabel):
+            if label.wordWrap():
+                label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
     # ================================================================== #
     # 各标签页
     # ================================================================== #
+    @staticmethod
+    def _fold(title: str, content: QWidget) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        toggle = QToolButton()
+        toggle.setText(title)
+        toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        toggle.setArrowType(Qt.RightArrow)
+        toggle.setCheckable(True)
+        toggle.toggled.connect(content.setVisible)
+        toggle.toggled.connect(lambda checked: toggle.setArrowType(Qt.DownArrow if checked else Qt.RightArrow))
+        layout.addWidget(toggle)
+        layout.addWidget(content)
+        content.hide()
+        return panel
+
+    @staticmethod
+    def _move_form_row(source: QFormLayout, target: QFormLayout, field: QWidget) -> None:
+        row = source.takeRow(field)
+        if row.labelItem:
+            target.addRow(row.labelItem.widget(), row.fieldItem.widget())
+        else:
+            target.addRow(row.fieldItem.widget())
+
+    def _update_service_hint(self) -> None:
+        if not hasattr(self, "service_hint"):
+            return
+        from urllib.parse import urlparse
+        provider = self.cmb_provider.currentData()
+        local = provider == "faster_whisper_local" or urlparse(self.edit_base.text()).hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+        self.service_hint.setText("本地识别需要相应服务或模型。请先检查是否就绪；无需填写云端密钥。" if local else "填写所选服务的密钥，然后检查连接。DeepSeek 的密钥用于「文字整理」。")
+
     def _scrolled(self, inner: QWidget) -> QWidget:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -115,33 +190,15 @@ class SettingsDialog(QDialog):
         page = QWidget()
         lay = QVBoxLayout(page)
 
-        notice = QLabel(
-            "<b style='color:#b42318'>先看清楚：语音转文字（ASR）和 DeepSeek 是两件事。</b><br>"
-            "• <b>ASR</b>（把音频变成文字）：由下面的端点完成。<br>"
-            "&nbsp;&nbsp;- <b>零成本方案</b>：本地 faster-whisper（预设 ①），不需要任何 API Key，"
-            "音频不出本机；<br>"
-            "&nbsp;&nbsp;- <b>最准方案</b>：<b>阿里云百炼 DashScope</b>（预设 ②，"
-            "<code>qwen3-asr-flash</code>，中文课堂场景明显更准；注意它**不返回时间戳**，<br>&nbsp;&nbsp;&nbsp;&nbsp;字幕时间轴按静音切分边界给出）。<br>"
-            "• <b>DeepSeek</b>（把文字改得更好）：<b>没有</b>语音转文字接口，"
-            "你填了 DeepSeek Key 也<b>不能</b>直接转写，它只做「文本加工」——见下一个标签页。"
-        )
-        notice.setWordWrap(True)
-        notice.setStyleSheet(
-            f"background:{theme.NOTICE_BG}; border:1px solid {theme.NOTICE_BORDER};"
-            f" padding:8px; border-radius:4px;"
-        )
+        notice = QLabel("选择把录音转成文字的服务")
+        notice.setProperty("role", "section")
         lay.addWidget(notice)
+        self.service_hint = QLabel("填写服务密钥后，可以检查连接。文字整理在另一页单独设置。")
+        self.service_hint.setWordWrap(True)
+        self.service_hint.setProperty("role", "hint")
+        lay.addWidget(self.service_hint)
 
-        local_hint = QLabel(LOCAL_ASR_HINT)
-        local_hint.setWordWrap(True)
-        local_hint.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        local_hint.setStyleSheet(
-            f"background:{theme.INFO_BG}; border:1px solid {theme.INFO_BORDER};"
-            f" padding:8px; border-radius:4px;"
-        )
-        lay.addWidget(local_hint)
-
-        box = QGroupBox("ASR 端点")
+        box = QGroupBox("语音识别服务")
         form = QFormLayout(box)
 
         self.cmb_preset = QComboBox()
@@ -149,7 +206,7 @@ class SettingsDialog(QDialog):
             self.cmb_preset.addItem(label)
         self.cmb_preset.addItem(CUSTOM_PRESET_LABEL)
         self.cmb_preset.currentIndexChanged.connect(self._on_preset_changed)
-        form.addRow("预设", self.cmb_preset)
+        form.addRow("服务", self.cmb_preset)
 
         self.cmb_provider = QComboBox()
         self.cmb_provider.addItem("阿里云百炼 DashScope（官方模型名如 qwen3-asr-flash）", "dashscope")
@@ -164,7 +221,7 @@ class SettingsDialog(QDialog):
         key_row = QHBoxLayout()
         self.edit_key = QLineEdit()
         self.edit_key.setEchoMode(QLineEdit.Password)
-        self.edit_key.setPlaceholderText("在此粘贴 ASR API Key（不会写进日志）")
+        self.edit_key.setPlaceholderText("粘贴服务提供的密钥")
         btn_show = QPushButton("显示")
         btn_show.setCheckable(True)
         btn_show.setFixedWidth(56)
@@ -179,7 +236,7 @@ class SettingsDialog(QDialog):
         key_row.addWidget(btn_clear)
         wrapper = QWidget()
         wrapper.setLayout(key_row)
-        form.addRow("API Key", wrapper)
+        form.addRow("服务密钥", wrapper)
 
         self.edit_model = QLineEdit()
         self.edit_model.setPlaceholderText("qwen3-asr-flash")
@@ -193,10 +250,10 @@ class SettingsDialog(QDialog):
             self.cmb_lang.addItem(label, code)
         form.addRow("语言", self.cmb_lang)
 
-        self.chk_native = QCheckBox("使用 DashScope 原生异步 API（大文件/长音频更稳，需要能访问 OSS）")
+        self.chk_native = QCheckBox("使用 DashScope 原生异步接口")
         form.addRow("", self.chk_native)
 
-        self.chk_timestamps = QCheckBox("请求时间戳（生成 .srt 必需；不勾选则 .srt 的时间轴会退化）")
+        self.chk_timestamps = QCheckBox("请求时间戳（服务支持时使用）")
         form.addRow("", self.chk_timestamps)
 
         self.chk_diarization = QCheckBox("说话人分离（若端点支持）")
@@ -233,7 +290,22 @@ class SettingsDialog(QDialog):
         self.spin_asr_retries = QSpinBox()
         self.spin_asr_retries.setRange(1, 10)
         form2.addRow("失败重试次数", self.spin_asr_retries)
-        lay.addWidget(box2)
+        advanced = QWidget()
+        advanced_layout = QVBoxLayout(advanced)
+        advanced_form = QFormLayout()
+        for field in (self.cmb_provider, self.edit_base, self.chk_native, self.chk_timestamps, self.chk_diarization):
+            self._move_form_row(form, advanced_form, field)
+        advanced_layout.addLayout(advanced_form)
+        advanced_layout.addWidget(box2)
+        hint = QLabel("部分语音服务不返回精确时间戳，字幕会采用音频分段边界。")
+        hint.setWordWrap(True)
+        hint.setProperty("role", "hint")
+        advanced_layout.addWidget(hint)
+        self.asr_advanced = self._fold("高级识别选项 / 自定义服务地址", advanced)
+        lay.addWidget(self.asr_advanced)
+        help_text = QLabel("本地语音服务需要先启动，内置本机识别需要安装模型与依赖。\n可在 README 的本地识别说明中查看安装与启动步骤；检查连接不会自动安装或下载模型。")
+        help_text.setWordWrap(True)
+        lay.addWidget(self._fold("本地识别使用帮助", help_text))
         lay.addStretch(1)
         return self._scrolled(page)
 
@@ -241,12 +313,7 @@ class SettingsDialog(QDialog):
     def _tab_llm(self) -> QWidget:
         page = QWidget()
         lay = QVBoxLayout(page)
-        notice = QLabel(
-            "DeepSeek 负责<b>转写之后的文字加工</b>：错别字与标点修复、课程专业术语纠正、"
-            "口语冗余清理、按语义重新分段、生成结构化摘要与大纲。"
-            "这是<b>可选</b>功能——关掉它也能正常产出 .txt/.srt/.md（就是 ASR 的原始文字）。<br>"
-            "另外：任何 LLM 调用失败都<b>不会</b>影响转写产物，只会退化成未加工的原文，并在 .md 里标注告警。"
-        )
+        notice = QLabel("让文稿更易读：纠正错别字、整理段落、生成摘要。\n这是可选功能；未开启或服务失败时，仍保留原始转写结果。")
         notice.setWordWrap(True)
         notice.setStyleSheet(
             f"background:{theme.INFO_BG}; border:1px solid {theme.INFO_BORDER};"
@@ -256,8 +323,10 @@ class SettingsDialog(QDialog):
 
         box = QGroupBox("DeepSeek（文本加工，可选）")
         form = QFormLayout(box)
-        self.chk_llm = QCheckBox("启用文本后处理（需要 DeepSeek API Key）")
-        form.addRow("", self.chk_llm)
+        self.chk_llm = QCheckBox("启用文字整理")
+        lay.addWidget(self.chk_llm)
+        self.llm_options = box
+        self.chk_llm.toggled.connect(box.setVisible)
 
         self.edit_llm_base = QLineEdit()
         self.edit_llm_base.setPlaceholderText("https://api.deepseek.com/v1")
@@ -277,15 +346,15 @@ class SettingsDialog(QDialog):
         row.addWidget(btn_show)
         w = QWidget()
         w.setLayout(row)
-        form.addRow("API Key", w)
+        form.addRow("服务密钥", w)
 
         self.edit_llm_model = QLineEdit()
         self.edit_llm_model.setPlaceholderText("deepseek-chat")
         form.addRow("模型", self.edit_llm_model)
 
-        self.chk_fix = QCheckBox("错别字 / 标点 / 术语修复（保留原时间轴）")
-        self.chk_reseg = QCheckBox("按语义重新分段（在修复之后执行）")
-        self.chk_summary = QCheckBox("生成结构化摘要与大纲（写进 .md）")
+        self.chk_fix = QCheckBox("修正错别字、标点和术语")
+        self.chk_reseg = QCheckBox("整理段落")
+        self.chk_summary = QCheckBox("生成摘要与大纲（保存到笔记）")
         for c in (self.chk_fix, self.chk_reseg, self.chk_summary):
             form.addRow("", c)
 
@@ -293,6 +362,11 @@ class SettingsDialog(QDialog):
         self.spin_llm_chars.setRange(1000, 30000)
         self.spin_llm_chars.setSingleStep(1000)
         form.addRow("单次调用最大字符", self.spin_llm_chars)
+        advanced = QWidget()
+        advanced_form = QFormLayout(advanced)
+        for field in (self.edit_llm_base, self.spin_llm_chars):
+            self._move_form_row(form, advanced_form, field)
+        form.addRow(self._fold("高级文字整理选项", advanced))
         lay.addWidget(box)
         lay.addStretch(1)
         return self._scrolled(page)
@@ -314,25 +388,24 @@ class SettingsDialog(QDialog):
         w.setLayout(row)
         form.addRow("输出目录", w)
 
-        self.chk_txt = QCheckBox("生成 .txt（纯文本全文）")
-        self.chk_srt = QCheckBox("生成 .srt（带时间轴字幕）")
-        self.chk_md = QCheckBox("生成 .md（标题 + 元信息 + 摘要 + 全文）")
+        self.chk_txt = QCheckBox("文稿 TXT · 方便阅读和复制")
+        self.chk_srt = QCheckBox("字幕 SRT · 与视频搭配使用")
+        self.chk_md = QCheckBox("笔记 Markdown · 全文及可选摘要")
         for c in (self.chk_txt, self.chk_srt, self.chk_md):
             form.addRow("", c)
 
-        self.chk_bom = QCheckBox("产物写入 UTF-8 BOM（Windows 记事本 / 字幕播放器不乱码，建议保持开启）")
+        self.chk_bom = QCheckBox("保留 Windows 中文编码标记（UTF-8 BOM）")
         self.chk_bom.setToolTip(
             "简体中文 Windows 的默认代码页是 GBK；不带 BOM 的 UTF-8 文件\n"
             "在旧版记事本和部分字幕播放器里会被猜错编码、显示成乱码。\n"
             "只有在你确定后续处理工具不接受 BOM 时才关闭。"
         )
-        form.addRow("", self.chk_bom)
+        encoding = QWidget()
+        encoding_layout = QVBoxLayout(encoding)
+        encoding_layout.addWidget(self.chk_bom)
+        form.addRow(self._fold("高级编码选项", encoding))
 
-        hint = QLabel(
-            f"默认目录结构：<code>&lt;输出目录&gt;/&lt;课程名&gt;/&lt;标题&gt;.{{txt,srt,md}}</code><br>"
-            f"另外会写一份 <code>&lt;标题&gt;.transcript.json</code>（机器可读，便于二次加工）。<br>"
-            f"目标文件已存在时会先备份为 <code>*.bak-时间戳</code>，<b>只增不改</b>，不会静默覆盖你的产物。"
-        )
+        hint = QLabel("文件按课程分文件夹保存。同名文件写出前会备份，方便找回之前的版本。")
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color:{theme.TEXT_MUTED};")
         form.addRow("", hint)
@@ -383,9 +456,9 @@ class SettingsDialog(QDialog):
         self.cmb_ch.addItem("双声道", 2)
         form.addRow("声道", self.cmb_ch)
 
-        self.chk_cache = QCheckBox("启用音频缓存（cache/media 命中即跳过下载，断点续跑不重下）")
-        self.chk_keep_audio = QCheckBox("额外在输出目录保留音频副本")
-        self.chk_keep_video = QCheckBox("保留原始视频（体积很大，默认关闭——按你的要求只留文本）")
+        self.chk_cache = QCheckBox("复用已下载音频")
+        self.chk_keep_audio = QCheckBox("完成后保留音频缓存")
+        self.chk_keep_video = QCheckBox("保留原始视频（占用较多空间）")
         for c in (self.chk_cache, self.chk_keep_audio, self.chk_keep_video):
             form.addRow("", c)
 
@@ -487,7 +560,9 @@ class SettingsDialog(QDialog):
         box = QGroupBox("运行信息")
         form = QFormLayout(box)
         info = "\n".join(f"{k} = {v}" for k, v in paths.describe().items())
-        label = QLabel(f"<pre style='font-size:11px'>{info}</pre>")
+        label = QLabel(info)
+        label.setTextFormat(Qt.PlainText)
+        label.setWordWrap(True)
         label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         form.addRow(label)
         lay.addWidget(box)
@@ -583,6 +658,8 @@ class SettingsDialog(QDialog):
             if combo.itemData(i) == value:
                 combo.setCurrentIndex(i)
                 return
+        combo.addItem(str(value), value)
+        combo.setCurrentIndex(combo.count() - 1)
 
     def _match_preset(self, cfg: AppConfig) -> int:
         """按 (provider, base_url, model) **三元组**反查预设。
@@ -614,9 +691,10 @@ class SettingsDialog(QDialog):
             self.edit_model.setText(model)
         self.chk_native.setChecked(False)
         self.edit_base.setEnabled(provider != "faster_whisper_local")
+        self._update_service_hint()
 
-    def on_save(self) -> None:
-        c = self.cfg
+    def _read_form(self) -> AppConfig:
+        c = copy.deepcopy(self.cfg)
         c.asr_provider = str(self.cmb_provider.currentData() or "dashscope")
         c.asr_base_url = self.edit_base.text().strip() or c.asr_base_url
         c.asr_model = self.edit_model.text().strip() or c.asr_model
@@ -669,11 +747,28 @@ class SettingsDialog(QDialog):
         if c.jitter_max < c.jitter_min:
             c.jitter_max = c.jitter_min
 
-        # 凭据单独加密保存
+        return c
+
+    def _edited_config(self) -> AppConfig:
+        current = self._read_form()
+        result = copy.deepcopy(self.cfg)
+        for field in fields(AppConfig):
+            value = getattr(current, field.name)
+            if value != self._baseline_values[field.name]:
+                setattr(result, field.name, copy.deepcopy(value))
+        return result
+
+    def on_save(self) -> None:
+        if self._probe_worker is not None and self._probe_worker.isRunning():
+            self.lbl_probe.setText("连接检查结束后即可保存设置。")
+            return
+        c = self._edited_config()
+        # 凭据单独加密保存；未改动的密钥不重新落盘。
         asr_key = self.edit_key.text().strip()
         llm_key = self.edit_llm_key.text().strip()
-        self.cm.set_secret("asr_api_key", asr_key)
-        self.cm.set_secret("llm_api_key", llm_key)
+        for key, value in (("asr_api_key", asr_key), ("llm_api_key", llm_key)):
+            if value != self._saved_keys[key]:
+                self.cm.set_secret(key, value)
         self.cm.save(c)
 
         if asr_key and not dpapi_available():
@@ -690,28 +785,51 @@ class SettingsDialog(QDialog):
     def on_probe(self) -> None:
         if self._probe_worker is not None and self._probe_worker.isRunning():
             return
-        # 先把当前界面上的 Key 应用进去，再自检
-        self.cm.set_secret("asr_api_key", self.edit_key.text().strip())
-        self.cm.set_secret("llm_api_key", self.edit_llm_key.text().strip())
-        self.cfg.asr_base_url = self.edit_base.text().strip() or self.cfg.asr_base_url
-        self.cfg.asr_model = self.edit_model.text().strip() or self.cfg.asr_model
-        self.cfg.asr_provider = str(self.cmb_provider.currentData() or "dashscope")
-        self.cfg.proxy = self.edit_proxy.text().strip()
-        self.cfg.verify_tls = self.chk_verify.isChecked()
-
+        # 检查连接使用编辑副本和内存密钥，取消对话框不产生持久化修改。
+        cfg = self._edited_config()
+        preview = self.cm.worker_snapshot(cfg, secrets={"asr_api_key": self.edit_key.text().strip(), "llm_api_key": self.edit_llm_key.text().strip()})
         self.txt_probe.clear()
-        self.txt_probe.appendPlainText("开始自检…（ffmpeg / 站点 / ASR / DeepSeek）")
+        self.txt_probe.appendPlainText("开始检查连接…")
+        self.lbl_probe.setText("正在检查，请稍候…")
         self.btn_check.setEnabled(False)
-        w = ProbeWorker(self.cfg, self.cm)
+        w = ProbeWorker(cfg, preview, parent=self)
+        w.which = ["llm"] if self.navigation.currentRow() == 1 else ["asr"] if self.navigation.currentRow() == 0 else ["ffmpeg", "site", "asr"]
         w.result.connect(self._on_probe_result)
-        w.finished.connect(lambda: self.btn_check.setEnabled(True))
+        w.finished.connect(self._probe_finished)
         self._probe_worker = w
         w.start()
+
+    def _probe_finished(self) -> None:
+        self.btn_check.setEnabled(True)
+        if getattr(self, "_close_after_probe", False):
+            super().reject()
+
+    def reject(self) -> None:
+        if self._probe_worker is not None and self._probe_worker.isRunning():
+            self._close_after_probe = True
+            self._probe_worker.requestInterruption()
+            self.lbl_probe.setText("正在结束连接检查，结束后自动关闭；设置不会保存。")
+            return
+        super().reject()
+
+    def closeEvent(self, event) -> None:
+        if self._probe_worker is not None and self._probe_worker.isRunning():
+            self.reject()
+            event.ignore()
+            return
+        super().closeEvent(event)
 
     def _on_probe_result(self, name: str, ok: bool, message: str) -> None:
         icon = "✅" if ok else "⛔"
         self.txt_probe.appendPlainText(f"{icon} {name}\n{message}\n")
-        self.lbl_probe.setText(f"{icon} {name}：{message.splitlines()[0] if message else ''}")
+        self.lbl_probe.setText("连接检查通过。" if ok else "连接检查未通过，请核对设置或确认本地服务已启动。详情见高级设置中的诊断记录。")
+
+    def _can_clear_cache(self) -> bool:
+        parent = self.parent()
+        if parent is not None and getattr(parent, "_batch_active", False):
+            self.lbl_probe.setText("当前正在转写，请停止任务后再清理缓存。")
+            return False
+        return True
 
     def _browse_output(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "选择输出目录", self.edit_out.text() or str(paths.output_dir()))
@@ -725,6 +843,8 @@ class SettingsDialog(QDialog):
 
     def _clear_media_cache(self) -> None:
         import shutil
+        if not self._can_clear_cache():
+            return
 
         if QMessageBox.question(self, "确认", f"将删除 {paths.media_cache_dir()} 下的全部音频缓存，确定吗？") != QMessageBox.Yes:
             return
@@ -743,6 +863,8 @@ class SettingsDialog(QDialog):
 
     def _clear_segments(self) -> None:
         import shutil
+        if not self._can_clear_cache():
+            return
 
         d = paths.cache_dir() / "segments"
         if QMessageBox.question(self, "确认", f"将删除 {d} 下的全部切分临时文件，确定吗？") != QMessageBox.Yes:
